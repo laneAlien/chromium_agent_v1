@@ -51,8 +51,12 @@ class InterestProfileAdmin(admin.ModelAdmin):
 class AgentSettingsAdmin(admin.ModelAdmin):
     list_display = (
         "id",
-        "session_window_start",
-        "session_window_end",
+        "window_one_start",
+        "window_one_end",
+        "window_two_start",
+        "window_two_end",
+        "window_three_start",
+        "window_three_end",
         "shorts_limit",
         "min_duration_seconds",
         "sessions_per_day_min",
