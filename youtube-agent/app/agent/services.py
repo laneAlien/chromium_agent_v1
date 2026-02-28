@@ -2,61 +2,45 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import time
 
 from django.db import transaction
 from django.utils import timezone
 
-from .models import AgentSettings, Session, VideoDecision, YouTubeTask
-from .youtube import build_watch_url
-
-
-@dataclass
-class DecisionPayload:
-    video_id: str
-    title: str
-    duration_seconds: int
-    action: str
-    reason: str
-    watched_seconds: int
+from .models import AgentSettings, Session, VideoDecision
+from .youtube import run_youtube_flow
 
 
 def format_search_query(query: str) -> str:
     return query.strip()
 
 
-def _build_decisions(settings: AgentSettings) -> list[DecisionPayload]:
-    tasks = list(YouTubeTask.objects.order_by("-created_at")[: settings.shorts_limit])
-    decisions: list[DecisionPayload] = []
-    for index, task in enumerate(tasks):
-        duration = settings.min_duration_seconds + (index * 15)
-        watch = index % 2 == 0
-        decisions.append(
-            DecisionPayload(
-                video_id=f"task-{task.id}",
-                title=task.title,
-                duration_seconds=duration,
-                action=VideoDecision.Action.WATCH if watch else VideoDecision.Action.SKIP,
-                reason="Matches current profile" if watch else "Lower relevance score",
-                watched_seconds=duration if watch else 0,
-            )
-        )
+def _build_session_summary(decisions: list[VideoDecision], shorts_limit: int) -> str:
+    watched = [d for d in decisions if d.action == VideoDecision.Action.WATCH]
+    skipped = [d for d in decisions if d.action == VideoDecision.Action.SKIP]
 
-    if decisions:
-        return decisions
+    reason_counts: dict[str, int] = {}
+    for decision in decisions:
+        reason = decision.reason.strip() or "(no reason)"
+        reason_counts[reason] = reason_counts.get(reason, 0) + 1
 
-    # Keep lifecycle traces and persistence even when no tasks exist.
-    return [
-        DecisionPayload(
-            video_id="fallback-1",
-            title="Fallback recommendation",
-            duration_seconds=settings.min_duration_seconds,
-            action=VideoDecision.Action.WATCH,
-            reason="No queued tasks; using fallback recommendation",
-            watched_seconds=settings.min_duration_seconds,
-        )
-    ]
+    watched_shorts = sum(1 for d in watched if "/shorts/" in d.video_url)
+    watched_duration_total = sum(d.watched_seconds for d in watched)
+    candidate_duration_total = sum(d.duration_seconds for d in decisions)
+
+    reason_lines = [f"- {reason}: {count}" for reason, count in sorted(reason_counts.items())]
+
+    return "\n".join(
+        [
+            f"Watched: {len(watched)}",
+            f"Skipped: {len(skipped)}",
+            f"Shorts consumed: {watched_shorts}/{shorts_limit}",
+            f"Watched duration total (seconds): {watched_duration_total}",
+            f"Candidate duration total (seconds): {candidate_duration_total}",
+            "Reasons distribution:",
+            *reason_lines,
+        ]
+    )
 
 
 @transaction.atomic
@@ -81,22 +65,25 @@ def run_session(session_id: int) -> Session:
     )
 
     try:
-        decisions = _build_decisions(settings)
-        for decision in decisions:
-            VideoDecision.objects.create(
-                session=session,
-                video_id=decision.video_id,
-                video_url=build_watch_url(decision.video_id),
-                title=decision.title,
-                duration_seconds=decision.duration_seconds,
-                action=decision.action,
-                reason=decision.reason,
-                watched_seconds=decision.watched_seconds,
+        decision_payloads = run_youtube_flow(settings)
+        saved_decisions: list[VideoDecision] = []
+        for decision in decision_payloads:
+            saved_decisions.append(
+                VideoDecision.objects.create(
+                    session=session,
+                    video_id=decision.video_id,
+                    video_url=decision.video_url,
+                    title=decision.title,
+                    duration_seconds=decision.duration_seconds,
+                    action=decision.action,
+                    reason=decision.reason,
+                    watched_seconds=decision.watched_seconds,
+                )
             )
 
         session.status = Session.Status.COMPLETED
         session.actual_end = timezone.now()
-        session.summary = f"Processed {len(decisions)} videos"
+        session.summary = _build_session_summary(saved_decisions, settings.shorts_limit)
         session.save(update_fields=["status", "actual_end", "summary", "updated_at"])
     except Exception as exc:
         session.status = Session.Status.FAILED
