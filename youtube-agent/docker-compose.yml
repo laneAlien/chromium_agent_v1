@@ -1,13 +1,48 @@
 version: '3.9'
 
+x-app-env: &app-env
+  POSTGRES_DB: ${POSTGRES_DB:-youtube_agent}
+  POSTGRES_USER: ${POSTGRES_USER:-youtube_agent}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-youtube_agent}
+  POSTGRES_HOST: ${POSTGRES_HOST:-db}
+  POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-change-me}
+  DJANGO_DEBUG: ${DJANGO_DEBUG:-0}
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+
 services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-youtube_agent}
+      POSTGRES_USER: ${POSTGRES_USER:-youtube_agent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-youtube_agent}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-youtube_agent} -d ${POSTGRES_DB:-youtube_agent}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   web:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     working_dir: /app
-    command: python manage.py runserver 0.0.0.0:8000
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    environment: *app-env
     volumes:
       - ./app:/app
+      - chromium_profile:/tmp/chromium-profile
     ports:
       - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  chromium_profile:
