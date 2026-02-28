@@ -71,8 +71,12 @@ class AgentSettings(models.Model):
         IMITATE = "imitate", "Imitate"
         OPTIMIZE = "optimize", "Optimize"
 
-    session_window_start = models.TimeField(help_text="Daily session window start time")
-    session_window_end = models.TimeField(help_text="Daily session window end time")
+    window_one_start = models.TimeField(help_text="Daily window #1 start time")
+    window_one_end = models.TimeField(help_text="Daily window #1 end time")
+    window_two_start = models.TimeField(help_text="Daily window #2 start time")
+    window_two_end = models.TimeField(help_text="Daily window #2 end time")
+    window_three_start = models.TimeField(help_text="Daily window #3 start time")
+    window_three_end = models.TimeField(help_text="Daily window #3 end time")
     shorts_limit = models.PositiveIntegerField(default=10)
     min_duration_seconds = models.PositiveIntegerField(default=60)
     sessions_per_day_min = models.PositiveIntegerField(
