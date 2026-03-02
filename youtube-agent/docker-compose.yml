@@ -9,6 +9,7 @@ x-app-env: &app-env
   DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-change-me}
   DJANGO_DEBUG: ${DJANGO_DEBUG:-0}
   DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+  PLAYWRIGHT_USER_DATA_DIR: ${PLAYWRIGHT_USER_DATA_DIR:-/tmp/chromium-profile}
 
 services:
   db:
@@ -32,7 +33,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     working_dir: /app
-    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    command: sh -c "Xvfb :99 -screen 0 1366x768x24 & python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
     environment: *app-env
     volumes:
       - ./app:/app
