@@ -33,7 +33,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     working_dir: /app
-    command: sh -c "Xvfb :99 -screen 0 1366x768x24 & python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    command: sh -c "Xvfb :99 -screen 0 1366x768x24 & python manage.py migrate && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 1"
     environment: *app-env
     volumes:
       - ./app:/app
